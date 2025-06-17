@@ -5,6 +5,10 @@ const port = process.env.PORT || 3000;
 const { MongoClient, ServerApiVersion } = require("mongodb");
 const app = express();
 
+// Middleware
+app.use(cors());
+app.use(express.json());
+
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(process.env.MONGODB_URI, {
   serverApi: {
@@ -18,6 +22,14 @@ async function run() {
   try {
     const database = client.db("idea-Canvas");
     const blogCollection = database.collection("blogs");
+
+    // POST: Add a blog
+    app.post("/addBlog", async (req, res) => {
+      const blog = req.body;
+      blog.createdAt = new Date();
+      const result = await blogCollection.insertOne(blog);
+      res.send(result);
+    });
 
     // GET: 6 recent blogs
     app.get("/recent", async (req, res) => {
