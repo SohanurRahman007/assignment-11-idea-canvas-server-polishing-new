@@ -23,6 +23,7 @@ async function run() {
     const database = client.db("idea-Canvas");
     const blogCollection = database.collection("blogs");
     const wishlistCollection = database.collection("wishlist");
+    const commentCollection = database.collection("comments");
 
     // POST: Add a blog
     app.post("/addBlog", async (req, res) => {
@@ -80,6 +81,36 @@ async function run() {
         .limit(6)
         .toArray();
       res.send(blogs);
+    });
+
+    // Get blog by ID
+    app.get("/blog/:id", async (req, res) => {
+      const id = req.params.id;
+      const blog = await client
+        .db("idea-Canvas")
+        .collection("blogs")
+        .findOne({ _id: new ObjectId(id) });
+      res.send(blog);
+    });
+
+    // Get comments for a blog
+    app.get("/comments/:blogId", async (req, res) => {
+      const blogId = req.params.blogId;
+      const result = await client
+        .db("idea-Canvas")
+        .collection("comments")
+        .find({ blogId })
+        .toArray();
+      res.send(result);
+    });
+
+    // Post new comment
+    app.post("/comments", async (req, res) => {
+      const result = await client
+        .db("idea-Canvas")
+        .collection("comments")
+        .insertOne(req.body);
+      res.send({ success: true, result });
     });
 
     // Send a ping to confirm a successful connection
