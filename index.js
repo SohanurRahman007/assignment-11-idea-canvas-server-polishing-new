@@ -2,14 +2,15 @@ const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
 const port = process.env.PORT || 3000;
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+
 const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+// MongoDB Client
 const client = new MongoClient(process.env.MONGODB_URI, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -24,6 +25,11 @@ async function run() {
     const blogCollection = database.collection("blogs");
     const wishlistCollection = database.collection("wishlist");
     const commentCollection = database.collection("comments");
+    // Ensure text index for search
+    // await blogCollection.createIndex({ title: "text" });
+
+    // Ensure text index for title (run once in Mongo shell or Compass)
+    // db.blogs.createIndex({ title: "text" })
 
     // POST: Add a blog
     app.post("/addBlog", async (req, res) => {
@@ -33,7 +39,96 @@ async function run() {
       res.send(result);
     });
 
-    // ❤️ POST: Add to Wishlist
+    // GET: Fetch blogs with optional category filter & search text
+    app.get("/blogs", async (req, res) => {
+      const { category, search } = req.query;
+
+      const filter = {};
+
+      if (category && category !== "") {
+        filter.category = category;
+      }
+
+      if (search && search.trim() !== "") {
+        filter.$text = { $search: search.trim() };
+      }
+
+      try {
+        const blogs = await blogCollection
+          .find(filter)
+          .sort({ createdAt: -1 })
+          .toArray();
+        res.send(blogs);
+      } catch (error) {
+        console.error("Error fetching blogs with filter:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch blogs" });
+      }
+    });
+
+    // GET: 6 recent blogs
+    app.get("/recent", async (req, res) => {
+      const blogs = await blogCollection
+        .find()
+        .sort({ createdAt: -1 })
+        .limit(6)
+        .toArray();
+      res.send(blogs);
+    });
+
+    // GET: Get blog by ID
+    app.get("/blog/:id", async (req, res) => {
+      const id = req.params.id;
+      try {
+        const blog = await blogCollection.findOne({ _id: new ObjectId(id) });
+        if (!blog) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Blog not found" });
+        }
+        res.send(blog);
+      } catch (error) {
+        res.status(400).send({ success: false, message: "Invalid blog ID" });
+      }
+    });
+
+    // PUT: Update a blog by ID
+    app.put("/blog/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedData = req.body;
+
+      try {
+        const result = await blogCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              title: updatedData.title,
+              image: updatedData.image,
+              category: updatedData.category,
+              shortDescription: updatedData.shortDescription,
+              longDescription: updatedData.longDescription,
+              updatedAt: new Date(),
+            },
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Blog not found" });
+        }
+
+        res.send({ success: true, message: "Blog updated successfully" });
+      } catch (error) {
+        console.error("Failed to update blog:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to update blog" });
+      }
+    });
+
+    // POST: Add to Wishlist
     app.post("/wishlist", async (req, res) => {
       const { blogId, title, image, category, userEmail } = req.body;
 
@@ -54,7 +149,7 @@ async function run() {
       res.send({ success: true, insertedId: result.insertedId });
     });
 
-    // 🧾 GET: Wishlist by user email
+    // GET: Wishlist by user email
     app.get("/wishlist", async (req, res) => {
       const email = req.query.email;
       const wishlist = await wishlistCollection
@@ -63,8 +158,7 @@ async function run() {
       res.send(wishlist);
     });
 
-    // ❌ DELETE: Remove from Wishlist
-    const { ObjectId } = require("mongodb");
+    // DELETE: Remove from Wishlist by wishlist _id
     app.delete("/wishlist/:id", async (req, res) => {
       const id = req.params.id;
       const result = await wishlistCollection.deleteOne({
@@ -73,95 +167,35 @@ async function run() {
       res.send(result);
     });
 
-    // GET: 6 recent blogs
-    app.get("/recent", async (req, res) => {
-      const blogs = await blogCollection
-        .find()
-        .sort({ createdAt: -1 })
-        .limit(6)
-        .toArray();
-      res.send(blogs);
-    });
-
-    // Get blog by ID
-    app.get("/blog/:id", async (req, res) => {
-      const id = req.params.id;
-      const blog = await client
-        .db("idea-Canvas")
-        .collection("blogs")
-        .findOne({ _id: new ObjectId(id) });
-      res.send(blog);
-    });
-
-    // PUT: Update a blog by ID
-    app.put("/blog/:id", async (req, res) => {
-      const id = req.params.id;
-      const updatedData = req.body;
-
-      try {
-        const result = await blogCollection.updateOne(
-          { _id: new ObjectId(id) },
-          {
-            $set: {
-              title: updatedData.title,
-              image: updatedData.image,
-              category: updatedData.category,
-              shortDescription: updatedData.shortDescription,
-              longDescription: updatedData.longDescription,
-              updatedAt: new Date(), // Optional: track update time
-            },
-          }
-        );
-
-        if (result.matchedCount === 0) {
-          return res
-            .status(404)
-            .send({ success: false, message: "Blog not found" });
-        }
-
-        res.send({ success: true, message: "Blog updated successfully" });
-      } catch (error) {
-        console.error("Failed to update blog:", error);
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to update blog" });
-      }
-    });
-
-    // Get comments for a blog
+    // GET: Get comments for a blog
     app.get("/comments/:blogId", async (req, res) => {
       const blogId = req.params.blogId;
-      const result = await client
-        .db("idea-Canvas")
-        .collection("comments")
-        .find({ blogId })
-        .toArray();
+      const result = await commentCollection.find({ blogId }).toArray();
       res.send(result);
     });
 
-    // Post new comment
+    // POST: Add a comment
     app.post("/comments", async (req, res) => {
-      const result = await client
-        .db("idea-Canvas")
-        .collection("comments")
-        .insertOne(req.body);
+      const result = await commentCollection.insertOne(req.body);
       res.send({ success: true, result });
     });
 
-    // Send a ping to confirm a successful connection
+    // Ping MongoDB
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
   } finally {
-    // Ensures that the client will close when you finish/error
+    // No closing client here to keep server running
   }
 }
+
 run().catch(console.dir);
 
 app.get("/", (req, res) => {
-  res.send("welcome to our Blogs");
+  res.send("Welcome to our Blogs API");
 });
+
 app.listen(port, () => {
-  console.log(`server is running on port ${port}`);
+  console.log(`Server is running on port ${port}`);
 });
