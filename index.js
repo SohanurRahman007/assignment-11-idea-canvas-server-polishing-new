@@ -93,6 +93,41 @@ async function run() {
       res.send(blog);
     });
 
+    // PUT: Update a blog by ID
+    app.put("/blog/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedData = req.body;
+
+      try {
+        const result = await blogCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              title: updatedData.title,
+              image: updatedData.image,
+              category: updatedData.category,
+              shortDescription: updatedData.shortDescription,
+              longDescription: updatedData.longDescription,
+              updatedAt: new Date(), // Optional: track update time
+            },
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Blog not found" });
+        }
+
+        res.send({ success: true, message: "Blog updated successfully" });
+      } catch (error) {
+        console.error("Failed to update blog:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to update blog" });
+      }
+    });
+
     // Get comments for a blog
     app.get("/comments/:blogId", async (req, res) => {
       const blogId = req.params.blogId;
