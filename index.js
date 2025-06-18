@@ -180,11 +180,35 @@ async function run() {
       res.send({ success: true, result });
     });
 
+    // GET: Top 10 blogs by longDescription word count
+    app.get("/blogs/top", async (req, res) => {
+      try {
+        const blogs = await blogCollection.find().toArray();
+
+        const sortedBlogs = blogs
+          .map((blog) => ({
+            ...blog,
+            wordCount: blog.longDescription
+              ? blog.longDescription.trim().split(/\s+/).length
+              : 0,
+          }))
+          .sort((a, b) => b.wordCount - a.wordCount)
+          .slice(0, 10);
+
+        res.send(sortedBlogs);
+      } catch (error) {
+        console.error("Error fetching top blogs:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch top blogs" });
+      }
+    });
+
     // Ping MongoDB
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // No closing client here to keep server running
   }
