@@ -10,8 +10,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.nkycuoy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 // MongoDB Client
-const client = new MongoClient(process.env.MONGODB_URI, {
+const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
     strict: true,
@@ -72,7 +73,7 @@ async function run() {
       const blogs = await blogCollection
         .find()
         .sort({ createdAt: -1 })
-        .limit(6)
+        .limit(8)
         .toArray();
       res.send(blogs);
     });
@@ -206,9 +207,9 @@ async function run() {
 
     // Ping MongoDB
     // await client.db("admin").command({ ping: 1 });
-    // console.log(
-    //   "Pinged your deployment. You successfully connected to MongoDB!"
-    // );
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
   } finally {
     // No closing client here to keep server running
   }
