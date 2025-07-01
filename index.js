@@ -68,7 +68,7 @@ async function run() {
       }
     });
 
-    // GET: 6 recent blogs
+    // GET: 8 recent blogs
     app.get("/recent", async (req, res) => {
       const blogs = await blogCollection
         .find()
@@ -150,13 +150,29 @@ async function run() {
       res.send({ success: true, insertedId: result.insertedId });
     });
 
-    // GET: Wishlist by user email
+    // // GET: Wishlist by user email
+    // app.get("/wishlist", async (req, res) => {
+    //   const email = req.query.email;
+    //   const wishlist = await wishlistCollection
+    //     .find({ userEmail: email })
+    //     .toArray();
+    //   res.send(wishlist);
+    // });
+
+    // GET: Wishlist by user email with blog details
     app.get("/wishlist", async (req, res) => {
       const email = req.query.email;
-      const wishlist = await wishlistCollection
-        .find({ userEmail: email })
-        .toArray();
-      res.send(wishlist);
+      if (!email) return res.send([]);
+
+      try {
+        const wishlist = await wishlistCollection
+          .find({ userEmail: email })
+          .toArray();
+        res.send(wishlist);
+      } catch (error) {
+        console.error("Wishlist fetch error:", error);
+        res.status(500).send({ success: false, message: "Failed to fetch" });
+      }
     });
 
     // DELETE: Remove from Wishlist by wishlist _id
