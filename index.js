@@ -150,15 +150,6 @@ async function run() {
       res.send({ success: true, insertedId: result.insertedId });
     });
 
-    // // GET: Wishlist by user email
-    // app.get("/wishlist", async (req, res) => {
-    //   const email = req.query.email;
-    //   const wishlist = await wishlistCollection
-    //     .find({ userEmail: email })
-    //     .toArray();
-    //   res.send(wishlist);
-    // });
-
     // GET: Wishlist by user email with blog details
     app.get("/wishlist", async (req, res) => {
       const email = req.query.email;
