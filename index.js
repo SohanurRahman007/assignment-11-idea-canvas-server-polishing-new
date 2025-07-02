@@ -22,15 +22,11 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
+    // database and collection
     const database = client.db("idea-Canvas");
     const blogCollection = database.collection("blogs");
     const wishlistCollection = database.collection("wishlist");
     const commentCollection = database.collection("comments");
-    // Ensure text index for search
-    // await blogCollection.createIndex({ title: "text" });
-
-    // Ensure text index for title (run once in Mongo shell or Compass)
-    // db.blogs.createIndex({ title: "text" })
 
     // POST: Add a blog
     app.post("/addBlog", async (req, res) => {
@@ -43,17 +39,14 @@ async function run() {
     // GET: Fetch blogs with optional category filter & search text
     app.get("/blogs", async (req, res) => {
       const { category, search } = req.query;
-
       const filter = {};
 
       if (category && category !== "") {
         filter.category = category;
       }
-
       if (search && search.trim() !== "") {
         filter.$text = { $search: search.trim() };
       }
-
       try {
         const blogs = await blogCollection
           .find(filter)
