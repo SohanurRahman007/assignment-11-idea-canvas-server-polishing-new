@@ -22,7 +22,7 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // database and collection
+    // database
     const database = client.db("idea-Canvas");
     const blogCollection = database.collection("blogs");
     const wishlistCollection = database.collection("wishlist");
@@ -36,23 +36,39 @@ async function run() {
       res.send(result);
     });
 
-    // GET: Fetch blogs with optional category filter & search text
+    // GET: Fetch blogs with optional category, search, and pagination
     app.get("/blogs", async (req, res) => {
-      const { category, search } = req.query;
+      // Extract query parameters, providing default values for pagination
+      const { category, search, page = 1, limit = 12 } = req.query;
+
+      // Initialize an empty filter object
       const filter = {};
 
-      if (category && category !== "") {
+      // Add category filter if it's provided and not 'All'
+      if (category && category !== "All") {
         filter.category = category;
       }
       if (search && search.trim() !== "") {
-        filter.$text = { $search: search.trim() };
+        filter.title = new RegExp(search.trim(), "i");
       }
+
+      // Calculate how many documents to skip for the current page
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
       try {
+        // Get the total count of documents that match the filter
+        const totalBlogs = await blogCollection.countDocuments(filter);
+
+        // Fetch the blogs for the current page, sorting by creation date
         const blogs = await blogCollection
           .find(filter)
           .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(parseInt(limit))
           .toArray();
-        res.send(blogs);
+
+        // Send the paginated blogs and the total count in a single response
+        res.send({ blogs, totalBlogs });
       } catch (error) {
         console.error("Error fetching blogs with filter:", error);
         res
@@ -71,6 +87,64 @@ async function run() {
       res.send(blogs);
     });
 
+    // PUT: Like/Unlike a blog
+    app.put("/blog/:id/like", async (req, res) => {
+      const blogId = req.params.id;
+      const { userEmail } = req.body;
+      if (!userEmail) {
+        return res
+          .status(400)
+          .send({ success: false, message: "User email is required." });
+      }
+      try {
+        const blog = await blogCollection.findOne({
+          _id: new ObjectId(blogId),
+        });
+
+        if (!blog) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Blog not found." });
+        }
+
+        const hasLiked = blog.likedBy && blog.likedBy.includes(userEmail);
+        let updateDoc;
+
+        if (hasLiked) {
+          updateDoc = {
+            $inc: { likes: -1 },
+            $pull: { likedBy: userEmail },
+          };
+        } else {
+          updateDoc = {
+            $inc: { likes: 1 },
+            $push: { likedBy: userEmail },
+          };
+        }
+
+        const result = await blogCollection.updateOne(
+          { _id: new ObjectId(blogId) },
+          updateDoc
+        );
+
+        if (result.matchedCount === 0) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Blog not found." });
+        }
+
+        res.send({
+          success: true,
+          message: "Like status updated successfully.",
+        });
+      } catch (error) {
+        console.error("Failed to update like status:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to update like status." });
+      }
+    });
+
     // GET: Get blog by ID
     app.get("/blog/:id", async (req, res) => {
       const id = req.params.id;
@@ -81,6 +155,11 @@ async function run() {
             .status(404)
             .send({ success: false, message: "Blog not found" });
         }
+
+        // Ensure 'likes' and 'likedBy' exist for a consistent response
+        if (!blog.likes) blog.likes = 0;
+        if (!blog.likedBy) blog.likedBy = [];
+
         res.send(blog);
       } catch (error) {
         res.status(400).send({ success: false, message: "Invalid blog ID" });

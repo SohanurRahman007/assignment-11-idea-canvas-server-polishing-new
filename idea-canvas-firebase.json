@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "idea-canvas-88aaf",
+  "private_key_id": "486a60441149dda427520f8c412f78c5afbf2532",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDezOHvPHK8a8ho\nvyJXhgybwSRWinp2+WV3IZxCcWL2YtTz4bqwhHeYM1maJaqeyuUulQPegkTXBcE4\ntYMABiQmOkgua4LNgbZ+MGECGHs5BLkw0aiKFmwR5z/lK9KhSgntVAawcuxjt5Z9\ntqsjng3hqlkZNFHXn0Lbcilckm1MJDG5tDArOMzPaP2plVpcwnZV2eB2QNJ4nq31\nGiAZeHR1RIKQvunTgcyAnBBsMzHyr8NBqAs4jUisiQt6Bozr7CtG4MtB6o9ZcYvP\nBDnGr/yQSvWIdD5munEepr/3hPCTy/zbIHG18JhgIx/TvKtUvZ5B+pTtxwTVY/1I\ntQmcYxXLAgMBAAECggEAZ5Z9o3QI6nb4bk8TgfsGyLHzmbL3vnI1DT8YvkGmn+SS\nmzODz8c/LYoOal+B5SNzjAVnj6Akro5z6FBoMG4qh4WIguCkp7Tb6u7GY6mLPRbn\nnX2VLWLAa1CHwh7uZuQcGnZ7R7WfF7vHYfq4ti4pyRahJ1lOhgB7nrkE5xADdibt\nvkGIhI01Ag5G6di6wQ0mPozCBxb45lcQEWJMKvjSSonRnMBs6znDYpPK7fho7+/9\nNZv25PfpOm65OD0+IaTURoj7We1KbD/vM/H8DwS/VKSNgWXjnC88SYAdPGOFzD+E\nR6caqipteGIFvhsH7XZSJ0VGR9muvtoj9UaKJHobtQKBgQD0Z8vlm26FeA3plh5Z\nX6B05SUU0cNI1TKowwHLKde7/zKKjWpm8Zppwfg78XHXkmxtHuBlY02xWdBd2oXE\nG51lbkYC9eRWUOTKM7gAV54pSbVl4ZLGTNw0VdebFnZH0Z1t603xiJla6FIKgpz2\nqJDHCX3Einv2HsCjWxdWlgeudwKBgQDpXrNeEtgmL7o1qy3fHqXCwBJWgDD/28E5\nv3k8K498mekNSQIaYNVN+0bbsbpkorhV4gtY/AK7kZ2uxSrorGQuQw8JLtx8LJgA\njnAE6mbvOGL1DhYkiML/8ljrXb0S/4+jY5WR4ZMc3PaZc5ShTpeaSIbZaPxN9/La\nS+TsnyRETQKBgAk3DKoIlT81Cpk/Dr/h6iPeK+rACfPqDfHtAFlPp5GwCpDMyjE9\ndMv+A0UHUnqFS89FdcJ83wYL095mCdseC24ynTMpYEWc4TN6hbqFkzINVGiV+7m8\nViUnA20WiLkmfyAQ2ix8MQQLdGRvDkoCiwrmIbbSXeAmwq6mFZgvKfT7AoGAR8fH\nKAJn1acMgYF7hItqtPJbMZwQdkJjtp18btN/OPYmRt3T9cUfFvNZIi4ShO3AATqb\n/uzU8lihxaYDwrlzvv8FWu+9Bby5rEIjln961c3kMjf4+5fNUuh6DTsx8uwEhF8X\nHF3j4BbfCugQKWWBIAV65Nhz8o93dUmuylFQ2GkCgYEAvZQKxt2NiLlyfSyJccIK\n4mV5CJ2K+cCO9hQEDkKFVEXoQp+GiDZt6pJaa3pSpV6OAx4MVb5/HGukM0wj5uRB\nkHpcQdENhThhMcL9AhHsqjW9StCG0PAID8Vp9z5igfUelaKXF+dMX8R5p1W1qyoo\no8g3WLYM05sd0VL1gu/Tsr8=\n-----END PRIVATE KEY-----\n",
+  "client_email": "firebase-adminsdk-fbsvc@idea-canvas-88aaf.iam.gserviceaccount.com",
+  "client_id": "101853677150879987288",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40idea-canvas-88aaf.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}
