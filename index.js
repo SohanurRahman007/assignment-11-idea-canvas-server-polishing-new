@@ -27,6 +27,7 @@ async function run() {
     const blogCollection = database.collection("blogs");
     const wishlistCollection = database.collection("wishlist");
     const commentCollection = database.collection("comments");
+    const newsletterCollection = database.collection("newsletter_subscribers");
 
     // POST: Add a blog
     app.post("/addBlog", async (req, res) => {
@@ -34,6 +35,47 @@ async function run() {
       blog.createdAt = new Date();
       const result = await blogCollection.insertOne(blog);
       res.send(result);
+    });
+
+    // This is used by your AllSubscribe component to display data
+    app.get("/newsletter_subscribers", async (req, res) => {
+      try {
+        const result = await newsletterCollection.find({}).toArray();
+        res.send(result);
+      } catch (err) {
+        console.error("Failed to fetch subscribers:", err);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
+
+    // POST: Add a new newsletter subscriber
+    app.post("/api/subscribe", async (req, res) => {
+      try {
+        const { name, email, age, country } = req.body;
+
+        // Basic validation
+        if (!name || !email || !age || !country) {
+          return res.status(400).json({ message: "All fields are required." });
+        }
+
+        const result = await newsletterCollection.insertOne({
+          name,
+          email,
+          age,
+          country,
+          subscribedAt: new Date(),
+        });
+
+        res.status(201).json({
+          message: "Successfully subscribed!",
+          id: result.insertedId,
+        });
+      } catch (error) {
+        console.error("Error during newsletter subscription:", error);
+        res.status(500).json({
+          message: "An error occurred during subscription.",
+        });
+      }
     });
 
     // GET: Fetch blogs with optional category, search, and pagination
@@ -74,6 +116,19 @@ async function run() {
         res
           .status(500)
           .send({ success: false, message: "Failed to fetch blogs" });
+      }
+    });
+
+    // NEW ROUTE: Get total count of all blogs
+    app.get("/blogs/count", async (req, res) => {
+      try {
+        const count = await blogCollection.countDocuments();
+        res.send({ count });
+      } catch (error) {
+        console.error("Error fetching blog count:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch blog count" });
       }
     });
 
@@ -142,6 +197,32 @@ async function run() {
         res
           .status(500)
           .send({ success: false, message: "Failed to update like status." });
+      }
+    });
+
+    // NEW ROUTE: Get total count of all likes across all blogs
+    app.get("/likes/count", async (req, res) => {
+      try {
+        // Aggregate all documents, sum up the 'likes' field
+        const result = await blogCollection
+          .aggregate([
+            {
+              $group: {
+                _id: null,
+                totalLikes: { $sum: "$likes" },
+              },
+            },
+          ])
+          .toArray();
+
+        const count = result.length > 0 ? result[0].totalLikes : 0;
+        res.send({ count });
+      } catch (error) {
+        console.error("Error fetching total likes count:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch total likes count",
+        });
       }
     });
 
@@ -238,6 +319,19 @@ async function run() {
       }
     });
 
+    // NEW ROUTE: Get total count of all wishlist items
+    app.get("/wishlist/count", async (req, res) => {
+      try {
+        const count = await wishlistCollection.countDocuments();
+        res.send({ count });
+      } catch (error) {
+        console.error("Error fetching wishlist count:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch wishlist count" });
+      }
+    });
+
     // DELETE: Remove from Wishlist by wishlist _id
     app.delete("/wishlist/:id", async (req, res) => {
       const id = req.params.id;
@@ -247,17 +341,30 @@ async function run() {
       res.send(result);
     });
 
+    // POST: Add a comment
+    app.post("/comments", async (req, res) => {
+      const result = await commentCollection.insertOne(req.body);
+      res.send({ success: true, result });
+    });
+
+    // NEW ROUTE: Get total count of all comments
+    app.get("/comments/count", async (req, res) => {
+      try {
+        const count = await commentCollection.countDocuments();
+        res.send({ count });
+      } catch (error) {
+        console.error("Error fetching comment count:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch comment count" });
+      }
+    });
+
     // GET: Get comments for a blog
     app.get("/comments/:blogId", async (req, res) => {
       const blogId = req.params.blogId;
       const result = await commentCollection.find({ blogId }).toArray();
       res.send(result);
-    });
-
-    // POST: Add a comment
-    app.post("/comments", async (req, res) => {
-      const result = await commentCollection.insertOne(req.body);
-      res.send({ success: true, result });
     });
 
     // GET: Top 10 blogs by longDescription word count
