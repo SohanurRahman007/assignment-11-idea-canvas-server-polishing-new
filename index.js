@@ -7,7 +7,17 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 
 // Middleware
-app.use(cors());
+// app.use(cors());
+// app.use(express.json());
+
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173"], // Your Vite frontend URLs
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
 app.use(express.json());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.nkycuoy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
@@ -388,6 +398,283 @@ async function run() {
         res
           .status(500)
           .send({ success: false, message: "Failed to fetch top blogs" });
+      }
+    });
+
+    // Add these routes to your existing server.js
+
+    // GET: Get user profile by email
+    app.get("/profile/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+        const profile = await database
+          .collection("user_profiles")
+          .findOne({ email });
+
+        if (!profile) {
+          return res.status(404).send({
+            success: false,
+            message: "Profile not found",
+          });
+        }
+
+        res.send({ success: true, profile });
+      } catch (error) {
+        console.error("Error fetching profile:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch profile",
+        });
+      }
+    });
+
+    // POST: Create or update user profile
+    app.post("/profile", async (req, res) => {
+      try {
+        const {
+          email,
+          name,
+          bio,
+          location,
+          website,
+          twitter,
+          github,
+          linkedin,
+        } = req.body;
+
+        if (!email) {
+          return res.status(400).send({
+            success: false,
+            message: "Email is required",
+          });
+        }
+
+        const profileData = {
+          email,
+          name: name || "",
+          bio: bio || "",
+          location: location || "",
+          website: website || "",
+          twitter: twitter || "",
+          github: github || "",
+          linkedin: linkedin || "",
+          updatedAt: new Date(),
+        };
+
+        // Upsert the profile (update if exists, insert if not)
+        const result = await database.collection("user_profiles").updateOne(
+          { email },
+          {
+            $set: profileData,
+            $setOnInsert: { createdAt: new Date() },
+          },
+          { upsert: true }
+        );
+
+        res.send({
+          success: true,
+          message: "Profile saved successfully",
+          result,
+        });
+      } catch (error) {
+        console.error("Error saving profile:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to save profile",
+        });
+      }
+    });
+
+    // PUT: Update profile image
+    app.put("/profile/image", async (req, res) => {
+      try {
+        const { email, photoURL } = req.body;
+
+        if (!email || !photoURL) {
+          return res.status(400).send({
+            success: false,
+            message: "Email and photoURL are required",
+          });
+        }
+
+        const result = await database.collection("user_profiles").updateOne(
+          { email },
+          {
+            $set: {
+              photoURL,
+              updatedAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
+
+        res.send({
+          success: true,
+          message: "Profile image updated successfully",
+          result,
+        });
+      } catch (error) {
+        console.error("Error updating profile image:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to update profile image",
+        });
+      }
+    });
+
+    // GET: Get user stats (blogs, likes, comments, wishlist)
+    app.get("/profile/:email/stats", async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        // Get user's blog count
+        const blogCount = await blogCollection.countDocuments({ email });
+
+        // Get user's wishlist count
+        const wishlistCount = await wishlistCollection.countDocuments({
+          userEmail: email,
+        });
+
+        // Get user's comments count
+        const commentCount = await commentCollection.countDocuments({
+          userEmail: email,
+        });
+
+        // Calculate total likes on user's blogs
+        const userBlogs = await blogCollection.find({ email }).toArray();
+        const totalLikes = userBlogs.reduce(
+          (sum, blog) => sum + (blog.likes || 0),
+          0
+        );
+
+        res.send({
+          success: true,
+          stats: {
+            blogs: blogCount,
+            wishlist: wishlistCount,
+            comments: commentCount,
+            likes: totalLikes,
+          },
+        });
+      } catch (error) {
+        console.error("Error fetching user stats:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch user stats",
+        });
+      }
+    });
+
+    // GET: Get user's own blogs with like and comment counts
+    app.get("/user/blogs/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        // Get user's blogs
+        const userBlogs = await blogCollection
+          .find({ email })
+          .sort({ createdAt: -1 })
+          .toArray();
+
+        // Get comment counts for each blog
+        const blogsWithStats = await Promise.all(
+          userBlogs.map(async (blog) => {
+            const commentCount = await commentCollection.countDocuments({
+              blogId: blog._id.toString(),
+            });
+
+            return {
+              ...blog,
+              commentCount,
+              // Ensure likes count exists
+              likes: blog.likes || 0,
+              // Ensure likedBy array exists
+              likedBy: blog.likedBy || [],
+            };
+          })
+        );
+
+        res.send({
+          success: true,
+          blogs: blogsWithStats,
+          totalBlogs: userBlogs.length,
+        });
+      } catch (error) {
+        console.error("Error fetching user blogs:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch user blogs",
+        });
+      }
+    });
+
+    // GET: Get user's blog statistics - FIXED VERSION
+    app.get("/user/stats/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        // Get user's blogs
+        const userBlogs = await blogCollection.find({ email }).toArray();
+
+        // Calculate total likes
+        const totalLikes = userBlogs.reduce(
+          (sum, blog) => sum + (blog.likes || 0),
+          0
+        );
+
+        // Calculate total comments - FIXED
+        let totalComments = 0;
+        for (const blog of userBlogs) {
+          const blogId = blog._id.toString();
+
+          // Count comments for this blog
+          const blogCommentCount = await commentCollection.countDocuments({
+            blogId: blogId,
+          });
+
+          totalComments += blogCommentCount;
+        }
+
+        // Calculate total views
+        const totalViews = userBlogs.reduce(
+          (sum, blog) => sum + (blog.views || 0),
+          0
+        );
+
+        // Get most popular blog
+        const mostPopularBlog =
+          userBlogs.length > 0
+            ? userBlogs.reduce((prev, current) =>
+                (prev.likes || 0) > (current.likes || 0) ? prev : current
+              )
+            : null;
+
+        console.log(
+          `📊 User Stats for ${email}: ${userBlogs.length} blogs, ${totalLikes} likes, ${totalComments} comments`
+        );
+
+        res.send({
+          success: true,
+          stats: {
+            totalBlogs: userBlogs.length,
+            totalLikes,
+            totalComments,
+            totalViews,
+            mostPopularBlog: mostPopularBlog
+              ? {
+                  title: mostPopularBlog.title,
+                  likes: mostPopularBlog.likes || 0,
+                  image: mostPopularBlog.image,
+                }
+              : null,
+          },
+        });
+      } catch (error) {
+        console.error("Error fetching user stats:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch user stats",
+        });
       }
     });
 
