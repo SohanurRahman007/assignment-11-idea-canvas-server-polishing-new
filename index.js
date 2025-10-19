@@ -676,6 +676,188 @@ async function run() {
       }
     });
 
+    // Add these routes to your existing server
+
+    // POST: Track reading progress
+    app.post("/reading-progress", async (req, res) => {
+      try {
+        const { blogId, userEmail, progress, timeSpent } = req.body;
+
+        const readingProgressCollection =
+          database.collection("reading_progress");
+
+        const result = await readingProgressCollection.updateOne(
+          { blogId, userEmail },
+          {
+            $set: {
+              progress: Math.min(100, progress),
+              timeSpent: timeSpent || 0,
+              lastRead: new Date(),
+            },
+            $setOnInsert: {
+              blogId,
+              userEmail,
+              startedAt: new Date(),
+            },
+          },
+          { upsert: true }
+        );
+
+        res.send({ success: true, result });
+      } catch (error) {
+        console.error("Error saving reading progress:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to save progress" });
+      }
+    });
+
+    // GET: Get reading progress for a user
+    app.get("/reading-progress/:userEmail", async (req, res) => {
+      try {
+        const { userEmail } = req.params;
+        const readingProgressCollection =
+          database.collection("reading_progress");
+
+        const progress = await readingProgressCollection
+          .find({ userEmail })
+          .sort({ lastRead: -1 })
+          .toArray();
+
+        res.send(progress);
+      } catch (error) {
+        console.error("Error fetching reading progress:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch progress" });
+      }
+    });
+
+    // Add these routes after your existing routes
+
+    // GET: Get recommended blogs based on current blog
+    app.get("/recommendations/:blogId", async (req, res) => {
+      try {
+        const { blogId } = req.params;
+
+        // Get current blog to find similar ones
+        const currentBlog = await blogCollection.findOne({
+          _id: new ObjectId(blogId),
+        });
+
+        if (!currentBlog) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Blog not found" });
+        }
+
+        // Find blogs with same category, excluding current blog
+        const recommendations = await blogCollection
+          .find({
+            category: currentBlog.category,
+            _id: { $ne: new ObjectId(blogId) },
+            status: "published",
+          })
+          .sort({ likes: -1, createdAt: -1 })
+          .limit(4)
+          .toArray();
+
+        // If not enough same-category blogs, add popular blogs from other categories
+        if (recommendations.length < 4) {
+          const additionalBlogs = await blogCollection
+            .find({
+              category: { $ne: currentBlog.category },
+              _id: { $ne: new ObjectId(blogId) },
+              status: "published",
+            })
+            .sort({ likes: -1 })
+            .limit(4 - recommendations.length)
+            .toArray();
+
+          recommendations.push(...additionalBlogs);
+        }
+
+        res.send(recommendations);
+      } catch (error) {
+        console.error("Error fetching recommendations:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to get recommendations" });
+      }
+    });
+
+    // GET: Get personalized recommendations based on user's reading history
+    app.get("/personalized-recommendations/:userEmail", async (req, res) => {
+      try {
+        const { userEmail } = req.params;
+
+        // First, try to get user's most liked categories from their blogs
+        const userBlogs = await blogCollection
+          .find({ email: userEmail })
+          .toArray();
+
+        let preferredCategories = [];
+
+        if (userBlogs.length > 0) {
+          // Get categories from user's own blogs
+          const categoryCount = {};
+          userBlogs.forEach((blog) => {
+            categoryCount[blog.category] =
+              (categoryCount[blog.category] || 0) + 1;
+          });
+
+          // Get top 2 categories
+          preferredCategories = Object.keys(categoryCount)
+            .sort((a, b) => categoryCount[b] - categoryCount[a])
+            .slice(0, 2);
+        }
+
+        // If no user blogs or not enough categories, fallback to popular categories
+        if (preferredCategories.length === 0) {
+          preferredCategories = [
+            "Technology",
+            "Education",
+            "Business",
+            "Lifestyle",
+          ];
+        }
+
+        // Get popular blogs from preferred categories
+        const recommendations = await blogCollection
+          .find({
+            category: { $in: preferredCategories },
+            email: { $ne: userEmail }, // Don't recommend user's own blogs
+          })
+          .sort({ likes: -1, createdAt: -1 })
+          .limit(6)
+          .toArray();
+
+        res.send(recommendations);
+      } catch (error) {
+        console.error("Error fetching personalized recommendations:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to get recommendations" });
+      }
+    });
+
+    // Fallback: Get recent blogs (already exists, but ensure it returns proper data)
+    app.get("/recent-blogs", async (req, res) => {
+      try {
+        const blogs = await blogCollection
+          .find()
+          .sort({ createdAt: -1 })
+          .limit(6)
+          .toArray();
+        res.send(blogs);
+      } catch (error) {
+        console.error("Error fetching recent blogs:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to fetch recent blogs" });
+      }
+    });
+
     // Ping MongoDB
     // await client.db("admin").command({ ping: 1 });
     console.log(
