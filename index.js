@@ -401,8 +401,6 @@ async function run() {
       }
     });
 
-    // Add these routes to your existing server.js
-
     // GET: Get user profile by email
     app.get("/profile/:email", async (req, res) => {
       try {
