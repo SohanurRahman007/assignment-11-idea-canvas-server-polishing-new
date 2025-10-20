@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const cors = require("cors");
 require("dotenv").config();
@@ -7,12 +8,9 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const app = express();
 
 // Middleware
-// app.use(cors());
-// app.use(express.json());
-
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://127.0.0.1:5173"], // Your Vite frontend URLs
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -21,7 +19,6 @@ app.use(
 app.use(express.json());
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.nkycuoy.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-// MongoDB Client
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -38,16 +35,102 @@ async function run() {
     const wishlistCollection = database.collection("wishlist");
     const commentCollection = database.collection("comments");
     const newsletterCollection = database.collection("newsletter_subscribers");
+    const notificationCollection = database.collection("notifications");
+    const userProfilesCollection = database.collection("user_profiles");
 
-    // POST: Add a blog
-    app.post("/addBlog", async (req, res) => {
-      const blog = req.body;
-      blog.createdAt = new Date();
-      const result = await blogCollection.insertOne(blog);
-      res.send(result);
+    // ==================== NOTIFICATION ROUTES ====================
+
+    // GET: Get notifications for ALL users
+    app.get("/notifications", async (req, res) => {
+      try {
+        const notifications = await notificationCollection
+          .find({})
+          .sort({ createdAt: -1 })
+          .limit(50)
+          .toArray();
+
+        res.send(notifications);
+      } catch (error) {
+        console.error("Error fetching notifications:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch notifications",
+        });
+      }
     });
 
-    // This is used by your AllSubscribe component to display data
+    // PUT: Mark a notification as read
+    app.put("/notifications/:notificationId/read", async (req, res) => {
+      try {
+        const { notificationId } = req.params;
+
+        const result = await notificationCollection.updateOne(
+          { _id: new ObjectId(notificationId) },
+          { $set: { read: true, readAt: new Date() } }
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Notification not found",
+          });
+        }
+
+        res.send({
+          success: true,
+          message: "Notification marked as read",
+        });
+      } catch (error) {
+        console.error("Error marking notification as read:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to mark notification as read",
+        });
+      }
+    });
+
+    // PUT: Mark all notifications as read
+    app.put("/notifications/read-all", async (req, res) => {
+      try {
+        const result = await notificationCollection.updateMany(
+          { read: false },
+          { $set: { read: true, readAt: new Date() } }
+        );
+
+        res.send({
+          success: true,
+          message: "All notifications marked as read",
+          modifiedCount: result.modifiedCount,
+        });
+      } catch (error) {
+        console.error("Error marking all notifications as read:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to mark all notifications as read",
+        });
+      }
+    });
+
+    // GET: Get unread notification count
+    app.get("/notifications/unread-count", async (req, res) => {
+      try {
+        const count = await notificationCollection.countDocuments({
+          read: false,
+        });
+
+        res.send({ count });
+      } catch (error) {
+        console.error("Error fetching unread count:", error);
+        res.status(500).send({
+          success: false,
+          message: "Failed to fetch unread count",
+        });
+      }
+    });
+
+    // ==================== NEWSLETTER ROUTES ====================
+
+    // GET: Get all newsletter subscribers
     app.get("/newsletter_subscribers", async (req, res) => {
       try {
         const result = await newsletterCollection.find({}).toArray();
@@ -58,7 +141,7 @@ async function run() {
       }
     });
 
-    // POST: Add a new newsletter subscriber
+    // POST: Add a new newsletter subscriber with notification
     app.post("/api/subscribe", async (req, res) => {
       try {
         const { name, email, age, country } = req.body;
@@ -68,6 +151,16 @@ async function run() {
           return res.status(400).json({ message: "All fields are required." });
         }
 
+        // Check if already subscribed
+        const existingSubscriber = await newsletterCollection.findOne({
+          email,
+        });
+        if (existingSubscriber) {
+          return res.status(400).json({
+            message: "This email is already subscribed.",
+          });
+        }
+
         const result = await newsletterCollection.insertOne({
           name,
           email,
@@ -75,6 +168,18 @@ async function run() {
           country,
           subscribedAt: new Date(),
         });
+
+        // Create notification for ALL logged in users
+        const notification = {
+          title: "New Subscriber! 🎉",
+          message: `${name} from ${country} just subscribed to our newsletter`,
+          type: "new_subscriber",
+          subscriberData: { name, email, age, country },
+          read: false,
+          createdAt: new Date(),
+        };
+
+        await notificationCollection.insertOne(notification);
 
         res.status(201).json({
           message: "Successfully subscribed!",
@@ -88,15 +193,24 @@ async function run() {
       }
     });
 
+    // ==================== BLOG ROUTES ====================
+
+    // POST: Add a blog
+    app.post("/addBlog", async (req, res) => {
+      const blog = req.body;
+      blog.createdAt = new Date();
+      blog.likes = blog.likes || 0;
+      blog.likedBy = blog.likedBy || [];
+      const result = await blogCollection.insertOne(blog);
+      res.send(result);
+    });
+
     // GET: Fetch blogs with optional category, search, and pagination
     app.get("/blogs", async (req, res) => {
-      // Extract query parameters, providing default values for pagination
       const { category, search, page = 1, limit = 12 } = req.query;
 
-      // Initialize an empty filter object
       const filter = {};
 
-      // Add category filter if it's provided and not 'All'
       if (category && category !== "All") {
         filter.category = category;
       }
@@ -104,14 +218,11 @@ async function run() {
         filter.title = new RegExp(search.trim(), "i");
       }
 
-      // Calculate how many documents to skip for the current page
       const skip = (parseInt(page) - 1) * parseInt(limit);
 
       try {
-        // Get the total count of documents that match the filter
         const totalBlogs = await blogCollection.countDocuments(filter);
 
-        // Fetch the blogs for the current page, sorting by creation date
         const blogs = await blogCollection
           .find(filter)
           .sort({ createdAt: -1 })
@@ -119,7 +230,6 @@ async function run() {
           .limit(parseInt(limit))
           .toArray();
 
-        // Send the paginated blogs and the total count in a single response
         res.send({ blogs, totalBlogs });
       } catch (error) {
         console.error("Error fetching blogs with filter:", error);
@@ -129,7 +239,7 @@ async function run() {
       }
     });
 
-    // NEW ROUTE: Get total count of all blogs
+    // GET: Total count of all blogs
     app.get("/blogs/count", async (req, res) => {
       try {
         const count = await blogCollection.countDocuments();
@@ -150,6 +260,61 @@ async function run() {
         .limit(8)
         .toArray();
       res.send(blogs);
+    });
+
+    // GET: Get blog by ID
+    app.get("/blog/:id", async (req, res) => {
+      const id = req.params.id;
+      try {
+        const blog = await blogCollection.findOne({ _id: new ObjectId(id) });
+        if (!blog) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Blog not found" });
+        }
+
+        if (!blog.likes) blog.likes = 0;
+        if (!blog.likedBy) blog.likedBy = [];
+
+        res.send(blog);
+      } catch (error) {
+        res.status(400).send({ success: false, message: "Invalid blog ID" });
+      }
+    });
+
+    // PUT: Update a blog by ID
+    app.put("/blog/:id", async (req, res) => {
+      const id = req.params.id;
+      const updatedData = req.body;
+
+      try {
+        const result = await blogCollection.updateOne(
+          { _id: new ObjectId(id) },
+          {
+            $set: {
+              title: updatedData.title,
+              image: updatedData.image,
+              category: updatedData.category,
+              shortDescription: updatedData.shortDescription,
+              longDescription: updatedData.longDescription,
+              updatedAt: new Date(),
+            },
+          }
+        );
+
+        if (result.matchedCount === 0) {
+          return res
+            .status(404)
+            .send({ success: false, message: "Blog not found" });
+        }
+
+        res.send({ success: true, message: "Blog updated successfully" });
+      } catch (error) {
+        console.error("Failed to update blog:", error);
+        res
+          .status(500)
+          .send({ success: false, message: "Failed to update blog" });
+      }
     });
 
     // PUT: Like/Unlike a blog
@@ -210,10 +375,9 @@ async function run() {
       }
     });
 
-    // NEW ROUTE: Get total count of all likes across all blogs
+    // GET: Total count of all likes across all blogs
     app.get("/likes/count", async (req, res) => {
       try {
-        // Aggregate all documents, sum up the 'likes' field
         const result = await blogCollection
           .aggregate([
             {
@@ -236,61 +400,7 @@ async function run() {
       }
     });
 
-    // GET: Get blog by ID
-    app.get("/blog/:id", async (req, res) => {
-      const id = req.params.id;
-      try {
-        const blog = await blogCollection.findOne({ _id: new ObjectId(id) });
-        if (!blog) {
-          return res
-            .status(404)
-            .send({ success: false, message: "Blog not found" });
-        }
-
-        // Ensure 'likes' and 'likedBy' exist for a consistent response
-        if (!blog.likes) blog.likes = 0;
-        if (!blog.likedBy) blog.likedBy = [];
-
-        res.send(blog);
-      } catch (error) {
-        res.status(400).send({ success: false, message: "Invalid blog ID" });
-      }
-    });
-
-    // PUT: Update a blog by ID
-    app.put("/blog/:id", async (req, res) => {
-      const id = req.params.id;
-      const updatedData = req.body;
-
-      try {
-        const result = await blogCollection.updateOne(
-          { _id: new ObjectId(id) },
-          {
-            $set: {
-              title: updatedData.title,
-              image: updatedData.image,
-              category: updatedData.category,
-              shortDescription: updatedData.shortDescription,
-              longDescription: updatedData.longDescription,
-              updatedAt: new Date(),
-            },
-          }
-        );
-
-        if (result.matchedCount === 0) {
-          return res
-            .status(404)
-            .send({ success: false, message: "Blog not found" });
-        }
-
-        res.send({ success: true, message: "Blog updated successfully" });
-      } catch (error) {
-        console.error("Failed to update blog:", error);
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to update blog" });
-      }
-    });
+    // ==================== WISHLIST ROUTES ====================
 
     // POST: Add to Wishlist
     app.post("/wishlist", async (req, res) => {
@@ -313,7 +423,7 @@ async function run() {
       res.send({ success: true, insertedId: result.insertedId });
     });
 
-    // GET: Wishlist by user email with blog details
+    // GET: Wishlist by user email
     app.get("/wishlist", async (req, res) => {
       const email = req.query.email;
       if (!email) return res.send([]);
@@ -329,7 +439,7 @@ async function run() {
       }
     });
 
-    // NEW ROUTE: Get total count of all wishlist items
+    // GET: Total count of all wishlist items
     app.get("/wishlist/count", async (req, res) => {
       try {
         const count = await wishlistCollection.countDocuments();
@@ -351,13 +461,19 @@ async function run() {
       res.send(result);
     });
 
+    // ==================== COMMENT ROUTES ====================
+
     // POST: Add a comment
     app.post("/comments", async (req, res) => {
-      const result = await commentCollection.insertOne(req.body);
+      const comment = {
+        ...req.body,
+        createdAt: new Date(),
+      };
+      const result = await commentCollection.insertOne(comment);
       res.send({ success: true, result });
     });
 
-    // NEW ROUTE: Get total count of all comments
+    // GET: Total count of all comments
     app.get("/comments/count", async (req, res) => {
       try {
         const count = await commentCollection.countDocuments();
@@ -373,41 +489,20 @@ async function run() {
     // GET: Get comments for a blog
     app.get("/comments/:blogId", async (req, res) => {
       const blogId = req.params.blogId;
-      const result = await commentCollection.find({ blogId }).toArray();
+      const result = await commentCollection
+        .find({ blogId })
+        .sort({ createdAt: -1 })
+        .toArray();
       res.send(result);
     });
 
-    // GET: Top 10 blogs by longDescription word count
-    app.get("/blogs/top", async (req, res) => {
-      try {
-        const blogs = await blogCollection.find().toArray();
-
-        const sortedBlogs = blogs
-          .map((blog) => ({
-            ...blog,
-            wordCount: blog.longDescription
-              ? blog.longDescription.trim().split(/\s+/).length
-              : 0,
-          }))
-          .sort((a, b) => b.wordCount - a.wordCount)
-          .slice(0, 10);
-
-        res.send(sortedBlogs);
-      } catch (error) {
-        console.error("Error fetching top blogs:", error);
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to fetch top blogs" });
-      }
-    });
+    // ==================== PROFILE ROUTES ====================
 
     // GET: Get user profile by email
     app.get("/profile/:email", async (req, res) => {
       try {
         const email = req.params.email;
-        const profile = await database
-          .collection("user_profiles")
-          .findOne({ email });
+        const profile = await userProfilesCollection.findOne({ email });
 
         if (!profile) {
           return res.status(404).send({
@@ -459,8 +554,7 @@ async function run() {
           updatedAt: new Date(),
         };
 
-        // Upsert the profile (update if exists, insert if not)
-        const result = await database.collection("user_profiles").updateOne(
+        const result = await userProfilesCollection.updateOne(
           { email },
           {
             $set: profileData,
@@ -495,7 +589,7 @@ async function run() {
           });
         }
 
-        const result = await database.collection("user_profiles").updateOne(
+        const result = await userProfilesCollection.updateOne(
           { email },
           {
             $set: {
@@ -520,25 +614,21 @@ async function run() {
       }
     });
 
+    // ==================== USER STATS ROUTES ====================
+
     // GET: Get user stats (blogs, likes, comments, wishlist)
     app.get("/profile/:email/stats", async (req, res) => {
       try {
         const email = req.params.email;
 
-        // Get user's blog count
         const blogCount = await blogCollection.countDocuments({ email });
-
-        // Get user's wishlist count
         const wishlistCount = await wishlistCollection.countDocuments({
           userEmail: email,
         });
-
-        // Get user's comments count
         const commentCount = await commentCollection.countDocuments({
           userEmail: email,
         });
 
-        // Calculate total likes on user's blogs
         const userBlogs = await blogCollection.find({ email }).toArray();
         const totalLikes = userBlogs.reduce(
           (sum, blog) => sum + (blog.likes || 0),
@@ -568,13 +658,11 @@ async function run() {
       try {
         const email = req.params.email;
 
-        // Get user's blogs
         const userBlogs = await blogCollection
           .find({ email })
           .sort({ createdAt: -1 })
           .toArray();
 
-        // Get comment counts for each blog
         const blogsWithStats = await Promise.all(
           userBlogs.map(async (blog) => {
             const commentCount = await commentCollection.countDocuments({
@@ -584,9 +672,7 @@ async function run() {
             return {
               ...blog,
               commentCount,
-              // Ensure likes count exists
               likes: blog.likes || 0,
-              // Ensure likedBy array exists
               likedBy: blog.likedBy || [],
             };
           })
@@ -606,242 +692,31 @@ async function run() {
       }
     });
 
-    // GET: Get user's blog statistics - FIXED VERSION
-    app.get("/user/stats/:email", async (req, res) => {
+    // GET: Top 10 blogs by longDescription word count
+    app.get("/blogs/top", async (req, res) => {
       try {
-        const email = req.params.email;
+        const blogs = await blogCollection.find().toArray();
 
-        // Get user's blogs
-        const userBlogs = await blogCollection.find({ email }).toArray();
+        const sortedBlogs = blogs
+          .map((blog) => ({
+            ...blog,
+            wordCount: blog.longDescription
+              ? blog.longDescription.trim().split(/\s+/).length
+              : 0,
+          }))
+          .sort((a, b) => b.wordCount - a.wordCount)
+          .slice(0, 10);
 
-        // Calculate total likes
-        const totalLikes = userBlogs.reduce(
-          (sum, blog) => sum + (blog.likes || 0),
-          0
-        );
-
-        // Calculate total comments - FIXED
-        let totalComments = 0;
-        for (const blog of userBlogs) {
-          const blogId = blog._id.toString();
-
-          // Count comments for this blog
-          const blogCommentCount = await commentCollection.countDocuments({
-            blogId: blogId,
-          });
-
-          totalComments += blogCommentCount;
-        }
-
-        // Calculate total views
-        const totalViews = userBlogs.reduce(
-          (sum, blog) => sum + (blog.views || 0),
-          0
-        );
-
-        // Get most popular blog
-        const mostPopularBlog =
-          userBlogs.length > 0
-            ? userBlogs.reduce((prev, current) =>
-                (prev.likes || 0) > (current.likes || 0) ? prev : current
-              )
-            : null;
-
-        console.log(
-          `📊 User Stats for ${email}: ${userBlogs.length} blogs, ${totalLikes} likes, ${totalComments} comments`
-        );
-
-        res.send({
-          success: true,
-          stats: {
-            totalBlogs: userBlogs.length,
-            totalLikes,
-            totalComments,
-            totalViews,
-            mostPopularBlog: mostPopularBlog
-              ? {
-                  title: mostPopularBlog.title,
-                  likes: mostPopularBlog.likes || 0,
-                  image: mostPopularBlog.image,
-                }
-              : null,
-          },
-        });
+        res.send(sortedBlogs);
       } catch (error) {
-        console.error("Error fetching user stats:", error);
-        res.status(500).send({
-          success: false,
-          message: "Failed to fetch user stats",
-        });
-      }
-    });
-
-    // Add these routes to your existing server
-
-    // POST: Track reading progress
-    app.post("/reading-progress", async (req, res) => {
-      try {
-        const { blogId, userEmail, progress, timeSpent } = req.body;
-
-        const readingProgressCollection =
-          database.collection("reading_progress");
-
-        const result = await readingProgressCollection.updateOne(
-          { blogId, userEmail },
-          {
-            $set: {
-              progress: Math.min(100, progress),
-              timeSpent: timeSpent || 0,
-              lastRead: new Date(),
-            },
-            $setOnInsert: {
-              blogId,
-              userEmail,
-              startedAt: new Date(),
-            },
-          },
-          { upsert: true }
-        );
-
-        res.send({ success: true, result });
-      } catch (error) {
-        console.error("Error saving reading progress:", error);
+        console.error("Error fetching top blogs:", error);
         res
           .status(500)
-          .send({ success: false, message: "Failed to save progress" });
+          .send({ success: false, message: "Failed to fetch top blogs" });
       }
     });
 
-    // GET: Get reading progress for a user
-    app.get("/reading-progress/:userEmail", async (req, res) => {
-      try {
-        const { userEmail } = req.params;
-        const readingProgressCollection =
-          database.collection("reading_progress");
-
-        const progress = await readingProgressCollection
-          .find({ userEmail })
-          .sort({ lastRead: -1 })
-          .toArray();
-
-        res.send(progress);
-      } catch (error) {
-        console.error("Error fetching reading progress:", error);
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to fetch progress" });
-      }
-    });
-
-    // Add these routes after your existing routes
-
-    // GET: Get recommended blogs based on current blog
-    app.get("/recommendations/:blogId", async (req, res) => {
-      try {
-        const { blogId } = req.params;
-
-        // Get current blog to find similar ones
-        const currentBlog = await blogCollection.findOne({
-          _id: new ObjectId(blogId),
-        });
-
-        if (!currentBlog) {
-          return res
-            .status(404)
-            .send({ success: false, message: "Blog not found" });
-        }
-
-        // Find blogs with same category, excluding current blog
-        const recommendations = await blogCollection
-          .find({
-            category: currentBlog.category,
-            _id: { $ne: new ObjectId(blogId) },
-            status: "published",
-          })
-          .sort({ likes: -1, createdAt: -1 })
-          .limit(4)
-          .toArray();
-
-        // If not enough same-category blogs, add popular blogs from other categories
-        if (recommendations.length < 4) {
-          const additionalBlogs = await blogCollection
-            .find({
-              category: { $ne: currentBlog.category },
-              _id: { $ne: new ObjectId(blogId) },
-              status: "published",
-            })
-            .sort({ likes: -1 })
-            .limit(4 - recommendations.length)
-            .toArray();
-
-          recommendations.push(...additionalBlogs);
-        }
-
-        res.send(recommendations);
-      } catch (error) {
-        console.error("Error fetching recommendations:", error);
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to get recommendations" });
-      }
-    });
-
-    // GET: Get personalized recommendations based on user's reading history
-    app.get("/personalized-recommendations/:userEmail", async (req, res) => {
-      try {
-        const { userEmail } = req.params;
-
-        // First, try to get user's most liked categories from their blogs
-        const userBlogs = await blogCollection
-          .find({ email: userEmail })
-          .toArray();
-
-        let preferredCategories = [];
-
-        if (userBlogs.length > 0) {
-          // Get categories from user's own blogs
-          const categoryCount = {};
-          userBlogs.forEach((blog) => {
-            categoryCount[blog.category] =
-              (categoryCount[blog.category] || 0) + 1;
-          });
-
-          // Get top 2 categories
-          preferredCategories = Object.keys(categoryCount)
-            .sort((a, b) => categoryCount[b] - categoryCount[a])
-            .slice(0, 2);
-        }
-
-        // If no user blogs or not enough categories, fallback to popular categories
-        if (preferredCategories.length === 0) {
-          preferredCategories = [
-            "Technology",
-            "Education",
-            "Business",
-            "Lifestyle",
-          ];
-        }
-
-        // Get popular blogs from preferred categories
-        const recommendations = await blogCollection
-          .find({
-            category: { $in: preferredCategories },
-            email: { $ne: userEmail }, // Don't recommend user's own blogs
-          })
-          .sort({ likes: -1, createdAt: -1 })
-          .limit(6)
-          .toArray();
-
-        res.send(recommendations);
-      } catch (error) {
-        console.error("Error fetching personalized recommendations:", error);
-        res
-          .status(500)
-          .send({ success: false, message: "Failed to get recommendations" });
-      }
-    });
-
-    // Fallback: Get recent blogs (already exists, but ensure it returns proper data)
+    // GET: Recent blogs
     app.get("/recent-blogs", async (req, res) => {
       try {
         const blogs = await blogCollection
@@ -858,24 +733,41 @@ async function run() {
       }
     });
 
-    // Ping MongoDB
-    // await client.db("admin").command({ ping: 1 });
+    console.log("✅ Server started successfully!");
     console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
+      "🔔 Notification system: ANY logged in user can see new subscribers"
     );
-  } finally {
-    // No closing client here to keep server running
+  } catch (error) {
+    console.error("❌ Error starting server:", error);
   }
 }
 
 run().catch(console.dir);
 
+// Root route
 app.get("/", (req, res) => {
-  res.send("Welcome to our Blogs API");
+  res.json({
+    message: "Welcome to Idea Canvas Blogs API",
+    version: "1.0.0",
+    features: {
+      notifications: "All logged in users can see new subscriber notifications",
+      blogs: "Full CRUD operations",
+      newsletter: "Subscribe with notifications",
+    },
+  });
 });
 
+// Health check route
+app.get("/health", (req, res) => {
+  res.json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+// Start server
 app.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
+  console.log(`🚀 Server is running on port ${port}`);
+  console.log(`📍 API Base URL: http://localhost:${port}`);
 });
-
-// checking
